@@ -1,0 +1,32 @@
+name: align
+on:
+  workflow_dispatch:
+    inputs:
+      yt: {description: "YouTube id", required: true}
+      game: {description: "SportVU game, MM.DD.YYYY.AWY.at.HOM", required: true}
+      start: {description: "section start s (0 = whole video)", default: "0"}
+      end: {description: "section end s (0 = whole video)", default: "0"}
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libgl1 > /dev/null
+      - run: pip install -q yt-dlp rapidocr onnxruntime opencv-python-headless numpy py7zr
+      - name: tracking data
+        run: python src/stage1/sportvu_compact.py "${{ inputs.game }}" data/sportvu
+      - name: video
+        run: |
+          S="${{ inputs.start }}"; E="${{ inputs.end }}"; SEC=""
+          if [ "$E" != "0" ]; then SEC="--download-sections *${S}-${E} --force-keyframes-at-cuts"; fi
+          yt-dlp --js-runtimes node -q -f "bv*[ext=mp4]/bv*" -S res,fps,br $SEC -o clip.mp4 -- "${{ inputs.yt }}" || { echo "DOWNLOAD_FAILED (bot check?)"; exit 3; }
+          ls -la clip.mp4
+      - name: align
+        run: python src/stage1/align_sportvu.py clip.mp4 "${{ inputs.game }}" --t0 "${{ inputs.start }}"
+      - uses: actions/upload-artifact@v4
+        with: {name: "align-${{ inputs.game }}", path: notes/align/*.json}
