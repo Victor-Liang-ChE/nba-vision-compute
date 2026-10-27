@@ -1,0 +1,27 @@
+name: sportvu
+# Compact every 2015-16 SportVU game log (public mirror) into small npz files: 20 parallel jobs of ~32 games; one artifact per job
+# (kept 90 days; the project pulls the games it needs from there).
+on: workflow_dispatch
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -q numpy py7zr
+      - run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          g = json.load(open("games.json"))[${{ matrix.shard }}::20]; bad = []
+          for x in g:
+              r = subprocess.run([sys.executable, "src/stage1/sportvu_compact.py", x, "data/sportvu"], capture_output=True, text=True)
+              if r.returncode: bad.append(x); print("FAIL", x, r.stderr[-200:])
+          print(len(g) - len(bad), "of", len(g), "games ok")
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: "sportvu-${{ matrix.shard }}", path: data/sportvu/, retention-days: 90}
